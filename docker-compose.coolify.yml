@@ -97,21 +97,69 @@ services:
     mem_limit: 1536m
     cpus: 1.25
 
+  searxng-config-init:
+    image: docker.io/alpine:3.22
+    restart: "no"
+    environment:
+      SEARXNG_SETTINGS: |
+        use_default_settings: true
+
+        general:
+          instance_name: "Odysseus Search"
+
+        server:
+          secret_key: "${SEARXNG_SECRET:?Set a long random SEARXNG_SECRET}"
+          limiter: false
+          image_proxy: true
+
+        search:
+          safe_search: 0
+          autocomplete: ""
+          default_lang: "de"
+          formats:
+            - html
+            - json
+
+        ui:
+          default_locale: "de"
+          query_in_title: false
+          infinite_scroll: false
+          results_on_new_tab: true
+          center_alignment: false
+          default_theme: simple
+          theme_args:
+            simple_style: auto
+
+        doi_resolvers:
+          oadoi.org: "https://oadoi.org/"
+          doi.org: "https://doi.org/"
+
+        default_doi_resolver: "oadoi.org"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        printf '%s\n' "$$SEARXNG_SETTINGS" > /config/settings.yml
+        chmod 0644 /config/settings.yml
+    volumes:
+      - searxng-config:/config
+    mem_limit: 64m
+    cpus: 0.10
+
   searxng:
     image: docker.io/searxng/searxng:2026.5.31-7159b8aed
     restart: unless-stopped
     expose:
       - "8080"
-    configs:
-      - source: searxng-settings
-        target: /etc/searxng/settings.yml
-        mode: 0444
+    depends_on:
+      searxng-config-init:
+        condition: service_completed_successfully
     volumes:
+      - searxng-config:/etc/searxng
       - searxng-cache:/var/cache/searxng
     environment:
       SEARXNG_BASE_URL: "http://searxng:8080/"
       SEARXNG_SECRET: "${SEARXNG_SECRET:?Set a long random SEARXNG_SECRET}"
-      FORCE_OWNERSHIP: "false"
     healthcheck:
       test:
         - CMD-SHELL
@@ -121,7 +169,7 @@ services:
       interval: 5s
       timeout: 6s
       retries: 20
-      start_period: 15s
+      start_period: 20s
     mem_limit: 768m
     cpus: 0.75
 
@@ -145,9 +193,6 @@ volumes:
   odysseus-huggingface:
   odysseus-local:
   chromadb-data:
+  searxng-config:
   searxng-cache:
   ntfy-cache:
-
-configs:
-  searxng-settings:
-    file: ./config/searxng/settings.coolify.yml
